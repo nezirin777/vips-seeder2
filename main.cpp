@@ -12,6 +12,9 @@
 #include "bitcoin.h"
 #include "db.h"
 
+#include <fstream>
+#include <string>
+
 using namespace std;
 
 bool fTestNet = false;
@@ -243,6 +246,52 @@ public:
 };
 
 #include "dns.h"
+
+static void LoadSeedFile(const char* filename, int defaultPort)
+{
+    std::ifstream f(filename);
+    if (!f.is_open()) {
+        printf("seed.txt not found, skipping\n");
+        return;
+    }
+
+    std::string line;
+    int count = 0;
+
+    while (std::getline(f, line)) {
+        if (line.empty() || line[0] == '#')
+            continue;
+
+        std::string host = line;
+        int port = defaultPort;
+
+        // IPv6 [addr]:port or IPv4 host:port
+        if (line[0] == '[') {
+            auto pos = line.find(']');
+            if (pos != std::string::npos) {
+                host = line.substr(1, pos - 1);
+                if (pos + 2 < line.size())
+                    port = atoi(line.c_str() + pos + 2);
+            }
+        } else {
+            auto pos = line.rfind(':');
+            if (pos != std::string::npos && line.find(':') == pos) {
+                host = line.substr(0, pos);
+                port = atoi(line.substr(pos + 1).c_str());
+            }
+        }
+
+        CService addr;
+        if (!Lookup(host.c_str(), addr, port, false))
+            continue;
+
+        addr.SetPort(port);
+        db.Add(addr, true);  // force-good
+        count++;
+    }
+
+    printf("Loaded %d nodes from seed.txt\n", count);
+}
 
 CAddrDb db;
 
@@ -601,6 +650,9 @@ int main(int argc, char **argv) {
         db.ResetIgnores();
     printf("done\n");
   }
+
+  LoadSeedFile("seed.txt", opts.nP2Port ? opts.nP2Port : GetDefaultPort());
+
   pthread_t threadDns, threadSeed, threadDump, threadStats;
   if (fDNS) {
     printf("Starting %i DNS threads for %s on %s (port %i)...", opts.nDnsThreads, opts.host, opts.ns, opts.nPort);
