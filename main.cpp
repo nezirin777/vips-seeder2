@@ -247,6 +247,8 @@ public:
 
 #include "dns.h"
 
+extern CAddrDb db;
+
 static void LoadSeedFile(const char* filename, int defaultPort)
 {
     std::ifstream f(filename);
